@@ -1,0 +1,2 @@
+#!/bin/sh
+g++ mtrand.cpp simulate.cpp -O2 -o simulate.exe
