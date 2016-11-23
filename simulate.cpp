@@ -54,6 +54,10 @@ struct InputProfile
 	int repeatCount;                   // How many times to repeat this simulation run
 
 	int optimisationReserveCount;      // reserve some memory upfront, as persistent std::vector growth memory allocations are slow
+
+	// WIP
+	int numIterations;
+	int seed;
 };
 
 struct Death
@@ -126,17 +130,20 @@ public:
 
 void PrintProfile(FILE* file, const InputProfile& profile)
 {
-	fprintf(file, "numberOfCyclists %f\n", profile.numberOfCyclists);
-	fprintf(file, "helmetEffectiveness = %f\n", profile.helmetEffectiveness);
-	fprintf(file, "helmetWearingFraction = %f\n", profile.helmetWearingFraction);
+	fprintf(file, "\nprofile:\n");
+	fprintf(file, "  numberOfCyclists         = %f\n", profile.numberOfCyclists);
+	fprintf(file, "  helmetEffectiveness      = %f\n", profile.helmetEffectiveness);
+	fprintf(file, "  helmetWearingFraction    = %f\n", profile.helmetWearingFraction);
 	for (int i=0; i<2; i++)
 	{
-		fprintf(file, "probOfCrashing[%d] = %f\n", i, profile.probOfCrashing[i]);
-		fprintf(file, "probFatalHeadInjury[%d] = %f\n", i, profile.probFatalHeadInjury[i]);
-		fprintf(file, "probFatalOtherInjury[%d] = %f\n", i, profile.probFatalOtherInjury[i]);
+		fprintf(file, "  probOfCrashing[%d]        = %f\n", i, profile.probOfCrashing[i]);
+		fprintf(file, "  probFatalHeadInjury[%d]   = %f\n", i, profile.probFatalHeadInjury[i]);
+		fprintf(file, "  probFatalOtherInjury[%d]  = %f\n", i, profile.probFatalOtherInjury[i]);
 	}
-	fprintf(file, "coronerAccuracy = %f\n", profile.coronerAccuracy);
-	fprintf(file, "repeatCount = %d\n", profile.repeatCount);
+	fprintf(file, "  coronerAccuracy          = %f\n", profile.coronerAccuracy);
+	fprintf(file, "  repeatCount              = %d\n", profile.repeatCount);
+	fprintf(file, "  numIterations            = %d\n", profile.numIterations);
+	fprintf(file, "  seed                     = %x\n", profile.seed);
 };
 
 void PrintResults(const InputProfile& profile, const ReportedGroup& cases, const ReportedGroup& controls)
@@ -276,11 +283,222 @@ void Simulate(const InputProfile& profile, ReportedGroup& outputCases, ReportedG
 	}
 }
 
+static void Bail(FILE* file, const char* msg)
+{
+	fprintf(file, "ERROR, bailing %s", msg);
+	exit(0);
+}
+
+class SettingsStringsParser
+{
+public:
+	SettingsStringsParser(const char* rawInputStringConst)
+	{
+		// Need to copy the input str as we cant modify the original
+		// NB: add two null-terminators at the end for easier processing
+		int len = strlen(rawInputStringConst);
+		if (len==0)
+			Bail(stderr, "Bad input settings");
+
+		rawInputString = new char[len+1];
+		strcpy(rawInputString, rawInputStringConst);
+		rawInputString[len] = 0;
+
+		// Now chop it up into sections, split by the 'commas'
+		char* p = rawInputString;
+		while (true)
+		{
+			inputStrings.push_back(p);
+			// Find the [next] comma
+			while (*p && *p!=',') ++p;
+			if (*p==0)
+				break;
+			*p = 0;
+			++p;
+		}
+	}
+
+	~SettingsStringsParser()
+	{
+		delete [] rawInputString;
+	}
+
+	bool GetOption(const char* option, const char* &value)
+	{
+		int len = strlen(option);
+		for (int i=0; i<(int)inputStrings.size(); i++)
+		{
+			if (strncmp(option, inputStrings[i], len)==0)
+			{
+				if ((inputStrings[i])[len] == '=')
+					value = &((inputStrings[i])[len+1]);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	bool GetOption(const char* option, double& value)
+	{
+		const char* v;
+		if (GetOption(option, v))
+		{
+			value = atof(v);
+			return true;
+		}
+		return false;
+	}
+	
+	bool GetOption(const char* option, float& value)
+	{
+		double d;
+		if (GetOption(option, d))
+		{
+			value = d;
+			return true;
+		}
+		return false;
+	}
+	
+	bool GetOption(const char* option, int& value)
+	{
+		double d;
+		if (GetOption(option, d))
+		{
+			value = d;
+			return true;
+		}
+		return false;
+	}
+
+	void DebugPrint()
+	{
+		for (int i=0; i<(int)inputStrings.size(); i++)
+		{
+			fprintf(stderr, "option: %s\n", inputStrings[i]);
+		}
+	}
+
+public:
+	char* rawInputString;
+	std::vector<char*> inputStrings;
+};
+
+static void ProcessSettings(const char* rawInputStringConst)
+{
+	InputProfile profile;
+	Zero(&profile, sizeof(profile));
+	
+	SettingsStringsParser parser(rawInputStringConst);
+	parser.GetOption("numberOfCyclists", profile.numberOfCyclists);
+	parser.GetOption("helmetEffectiveness", profile.helmetEffectiveness);
+	parser.GetOption("probOfCrashing[0]", profile.probOfCrashing[0]);
+	parser.GetOption("probOfCrashing[1]", profile.probOfCrashing[1]);
+	parser.GetOption("probFatalHeadInjury[0]", profile.probFatalHeadInjury[0]);
+	parser.GetOption("probFatalHeadInjury[1]", profile.probFatalHeadInjury[1]);
+	parser.GetOption("probFatalOtherInjury[0]", profile.probFatalOtherInjury[0]);
+	parser.GetOption("probFatalOtherInjury[1]", profile.probFatalOtherInjury[1]);
+	parser.GetOption("coronerAccuracy", profile.coronerAccuracy);
+	parser.GetOption("numIterations", profile.numIterations);
+	parser.GetOption("seed", profile.seed);
+
+	PrintProfile(stderr, profile);
+
+	//fprintf(out, "       helmetEffectiveness\n"); 
+	//fprintf(out, "       helmetWearingFraction\n"); 
+	//fprintf(out, "       probOfCrashing[]             nb: probOfCrashing[0] no helmet, probOfCrashing[1] with helmet\n");
+	//fprintf(out, "       probFatalHeadInjury[]\n");
+	//fprintf(out, "       probFatalOtherInjury[]\n");
+	//fprintf(out, "       coronerAccuracy              0 -> 1.0\n");
+	//fprintf(out, "       numIterations\n");
+	//fprintf(out, "       seed {optional}              seed value for the Mersenne Twister generator\n");
+
+	//fprintf(out, "\nExample:\n");
+	//fprintf(out, "    --settings=numberOfCyclists=10e6,helmetEffectiveness=0.2,helmetWearingFraction=0.35\n");
+	//fprintf(out, "      NB: settings are case sensitive\n");
+}
+
+static const char* ArgStringComp(const char* arg, const char* str)
+{
+	int len = strlen(str);
+	if (strncmp(arg, str, len)==0 && arg[len]=='=')
+	{
+		return &arg[len+1];
+	}
+	return NULL;
+}
+
+//=======================================
+//
+//=======================================
+void ProcessArgs(int argc, const char* argv[])
+{
+	FILE* out = stderr;
+	bool bPrintUsage = (argc==1);
+	const char* argValue = "";
+
+	for (int i=1; i<argc; i++)
+	{
+		if ((argValue = ArgStringComp(argv[i], "-h")))
+		{
+			printf("argValue = '%s'\n", argValue);
+			bPrintUsage = true;
+			break;
+		}
+		
+		if ((argValue = ArgStringComp(argv[i], "-o")))
+		{
+			continue;
+		}
+		
+		if ((argValue = ArgStringComp(argv[i], "--settings")))
+		{
+			ProcessSettings(argValue);
+			continue;
+		}
+	
+		// If we get here an argument wasnt processed, bail
+		char badArg[128];
+		strncpy(badArg, argv[i], 127);
+		badArg[127] = 0;
+		fprintf(out, "Argument error!\n");
+		fprintf(out, ">   %s\n\n", badArg);
+		Bail(out, "...bailing");
+	}
+
+	if (bPrintUsage)
+	{
+		fprintf(out, "Usage:\n");
+		fprintf(out, "  -h,  this help msg\n");
+		fprintf(out, "  -o,  -o=file, output the results to a file\n");
+		fprintf(out, "  --settings, --settings=\"comma separated list of settings\"\n");
+
+		fprintf(out, "\nList of Settings:\n");
+
+		fprintf(out, "       numberOfCyclists\n");
+		fprintf(out, "       helmetEffectiveness\n"); 
+		fprintf(out, "       helmetWearingFraction\n"); 
+		fprintf(out, "       probOfCrashing[]             nb: probOfCrashing[0] no helmet, probOfCrashing[1] with helmet\n");
+		fprintf(out, "       probFatalHeadInjury[]\n");
+		fprintf(out, "       probFatalOtherInjury[]\n");
+		fprintf(out, "       coronerAccuracy              0 -> 1.0\n");
+		fprintf(out, "       numIterations\n");
+		fprintf(out, "       seed {optional}              seed value for the Mersenne Twister generator\n");
+
+		fprintf(out, "\nExample:\n");
+		fprintf(out, "    --settings=numberOfCyclists=10e6,helmetEffectiveness=0.2,helmetWearingFraction=0.35\n");
+		fprintf(out, "      NB: settings are case sensitive\n");
+		Bail(out, "\n");
+	}
+}
+
 //=======================================
 // MAIN
 //=======================================
-int main()
+int main(int argc, const char* argv[])
 {
+	ProcessArgs(argc, argv);
+
 	const char* baseFilename = "output/result";
 	mkdir("output");
 
