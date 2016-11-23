@@ -1,16 +1,21 @@
 #!/bin/sh
 
-simulate.exe --settings=\
-numberOfCyclists=4e6,\
-helmetEffectiveness=0.3,\
-helmetWearingFraction=0.35,\
+FILEOUT=$1
+EFF=$2
+FRAC=$3
+ACC=$4
+
+./simulate.exe --settings=\
+numberOfCyclists=20e6,\
+helmetEffectiveness=$EFF,\
+helmetWearingFraction=$FRAC,\
 probOfCrashing[0]=0.01,\
 probOfCrashing[1]=0.01,\
-probFatalHeadInjury[0]=0.001,\
-probFatalHeadInjury[1]=0.001,\
-probFatalOtherInjury[0]=0.001,\
-probFatalOtherInjury[1]=0.001,\
-coronerAccuracy=0.9,\
-numIterations=5000,\
-seed=0
+probFatalHeadInjury[0]=0.0003,\
+probFatalHeadInjury[1]=0.0003,\
+probFatalOtherInjury[0]=0.0005,\
+probFatalOtherInjury[1]=0.0005,\
+coronerAccuracy=$ACC,\
+numIterations=10000,\
+seed=0 > $FILEOUT
 

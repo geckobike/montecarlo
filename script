@@ -1,0 +1,14 @@
+#!/bin/sh
+
+# wearing fraction = 0.35
+FRAC="0.35"
+
+# create output folder
+mkdir -p output
+
+# run each subset
+./script_eff output/wear0.35/eff0.0 $FRAC 0.0
+./script_eff output/wear0.35/eff0.2 $FRAC 0.2
+./script_eff output/wear0.35/eff0.4 $FRAC 0.4
+./script_eff output/wear0.35/eff0.6 $FRAC 0.6
+

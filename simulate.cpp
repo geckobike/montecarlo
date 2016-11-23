@@ -512,7 +512,7 @@ int main(int argc, const char* argv[])
 		results[i].Calculate(cases, controls);
 		//results[i].Print(stderr);
 		//if (i>10) exit(0);
-		if ((i%100)==0)
+		if ((i%1000)==0)
 		{
 			fprintf(stderr, "%d of %d\n", i, numIterations);
 			fflush(stderr);

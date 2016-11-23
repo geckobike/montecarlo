@@ -1,0 +1,15 @@
+#!/bin/sh
+
+STUB="$1"   # stub directory
+FRAC="$2"   # fraction wearing
+EFF="$3"    # effectivenss
+
+mkdir -p $STUB
+
+# for this fraction/effectiveness run simulations for coroner accuracy
+./run $STUB/acc1.00 $EFF $FRAC 1.00
+./run $STUB/acc0.95 $EFF $FRAC 0.95
+./run $STUB/acc0.90 $EFF $FRAC 0.90
+./run $STUB/acc0.80 $EFF $FRAC 0.80
+./run $STUB/acc0.70 $EFF $FRAC 0.70
+
