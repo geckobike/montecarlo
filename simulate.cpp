@@ -50,14 +50,12 @@ struct InputProfile
 	double probFatalOtherInjury[2];     // Probability of this crash becoming a fatal body injury (after crashing)
 
 	double coronerAccuracy;             // When deciding whether a death is a "control" or a "case" how accurate is the coroner? 0->1.0, with 1.0 == 100% accurate
+	
+	int numIterations;                  // How many times should the simulation be repeated
+	int seed;                           // [optional] seed for the Mersenne Twister
 
-	int repeatCount;                   // How many times to repeat this simulation run
+	int optimisationReserveCount;       // reserve some memory upfront, as persistent std::vector growth memory allocations are slow
 
-	int optimisationReserveCount;      // reserve some memory upfront, as persistent std::vector growth memory allocations are slow
-
-	// WIP
-	int numIterations;
-	int seed;
 };
 
 struct Death
@@ -131,7 +129,7 @@ public:
 void PrintProfile(FILE* file, const InputProfile& profile)
 {
 	fprintf(file, "\nprofile:\n");
-	fprintf(file, "  numberOfCyclists         = %f\n", profile.numberOfCyclists);
+	fprintf(file, "  numberOfCyclists         = %d\n", (int)profile.numberOfCyclists);
 	fprintf(file, "  helmetEffectiveness      = %f\n", profile.helmetEffectiveness);
 	fprintf(file, "  helmetWearingFraction    = %f\n", profile.helmetWearingFraction);
 	for (int i=0; i<2; i++)
@@ -141,7 +139,6 @@ void PrintProfile(FILE* file, const InputProfile& profile)
 		fprintf(file, "  probFatalOtherInjury[%d]  = %f\n", i, profile.probFatalOtherInjury[i]);
 	}
 	fprintf(file, "  coronerAccuracy          = %f\n", profile.coronerAccuracy);
-	fprintf(file, "  repeatCount              = %d\n", profile.repeatCount);
 	fprintf(file, "  numIterations            = %d\n", profile.numIterations);
 	fprintf(file, "  seed                     = %x\n", profile.seed);
 };
@@ -200,85 +197,82 @@ void Simulate(const InputProfile& profile, ReportedGroup& outputCases, ReportedG
 	std::vector<Death> deaths;
 	deaths.reserve(profile.optimisationReserveCount); // Optimisation, reserve some memory upfront
 
-	for (int repeat=0; repeat<profile.repeatCount; repeat++)
+	//=======================================
+	// Run the simulation loop
+	//=======================================
+	for (int i=0; i<(int)profile.numberOfCyclists; i++)
 	{
-		//=======================================
-		// Run the simulation loop
-		//=======================================
-		for (int i=0; i<(int)profile.numberOfCyclists; i++)
+		// For each cyclist - roll the dice (aka the random number generator)
+		// Are they wearing a helmet ?
+		// 1 - wearing a helmet, 0 - not wearing a helmet
+		int helmet = (g_random() < profile.helmetWearingFraction) ? 1 : 0;
+
+		// For each cyclist - roll the dice (aka the random number generator)
+		// Is it a crash?
+		if (g_random() < profile.probOfCrashing[helmet])
 		{
-			// For each cyclist - roll the dice (aka the random number generator)
-			// Are they wearing a helmet ?
-			// 1 - wearing a helmet, 0 - not wearing a helmet
-			int helmet = (g_random() < profile.helmetWearingFraction) ? 1 : 0;
+			// What's the probability of this crash leading to a fatal head injury
+			double probabilityOfFatalHeadInjury = profile.probFatalHeadInjury[helmet];
+			// If helemt wearing that probability is reduced by (1-protection)
+			if (helmet)
+				probabilityOfFatalHeadInjury *= 1.0 - profile.helmetEffectiveness;
 
-			// For each cyclist - roll the dice (aka the random number generator)
-			// Is it a crash?
-			if (g_random() < profile.probOfCrashing[helmet])
+			// Does the crash lead to a fatal HEAD injury?
+			bool bFatalHeadInjury = (g_random() < probabilityOfFatalHeadInjury);
+
+			// Does the crash lead to a fatal injury other than the head?
+			bool bFatalNonHeadInjury = (g_random() < profile.probFatalOtherInjury[helmet]);
+
+			// If it was a fatality, record the death
+			if (bFatalHeadInjury || bFatalNonHeadInjury)
 			{
-				// What's the probability of this crash leading to a fatal head injury
-				double probabilityOfFatalHeadInjury = profile.probFatalHeadInjury[helmet];
-				// If helemt wearing that probability is reduced by (1-protection)
-				if (helmet)
-					probabilityOfFatalHeadInjury *= 1.0 - profile.helmetEffectiveness;
-
-				// Does the crash lead to a fatal HEAD injury?
-				bool bFatalHeadInjury = (g_random() < probabilityOfFatalHeadInjury);
-
-				// Does the crash lead to a fatal injury other than the head?
-				bool bFatalNonHeadInjury = (g_random() < profile.probFatalOtherInjury[helmet]);
-
-				// If it was a fatality, record the death
-				if (bFatalHeadInjury || bFatalNonHeadInjury)
-				{
-					Death death;
-					death.bHelmet = helmet ? true : false;
-					death.bFatalHeadInjury = bFatalHeadInjury;
-					death.bFatalNonHeadInjury = bFatalNonHeadInjury;
-					deaths.push_back(death);
-				}
+				Death death;
+				death.bHelmet = helmet ? true : false;
+				death.bFatalHeadInjury = bFatalHeadInjury;
+				death.bFatalNonHeadInjury = bFatalNonHeadInjury;
+				deaths.push_back(death);
 			}
 		}
+	}
 
-		//===============================================
-		// Coroner analyses the deaths
-		//===============================================
-		for (int i=0; i<(int)deaths.size(); i++)
+	//===============================================
+	// Coroner analyses the deaths
+	//===============================================
+	for (int i=0; i<(int)deaths.size(); i++)
+	{
+		Death& death = deaths[i];
+		int helmet = death.bHelmet ? kHelmet : kNoHelmet;
+
+		// If the death has a fatal non-head injury occurs it
+		// should be classified as a control,
+		// regardless of whether there was as head injury as well
+		bool bControl = death.bFatalNonHeadInjury;
+
+		// However there might be some bias or error
+		// by the coroner in identifying the
+		// control if they're not wearing a helmet
+		// maybe they're more likely to decide a head injury
+		// was the cause rather than another injury
+		if (!helmet && (g_random() > profile.coronerAccuracy))
 		{
-			Death& death = deaths[i];
-			int helmet = death.bHelmet ? kHelmet : kNoHelmet;
+			// The coroner mis-identifies this control
+			bControl = false;
+		}
 
-			// If the death has a fatal non-head injury occurs it
-			// should be classified as a control,
-			// regardless of whether there was as head injury as well
-			bool bControl = death.bFatalNonHeadInjury;
+		// Equally if they are wearing a helmet 
+		// and the other injuries are a borderline case,
+		// it might sway a coroner to decide the death is a control
+		// rather than a case
+		if (helmet && (g_random() > profile.coronerAccuracy))
+			bControl = true;
 
-			// However there might be some bias or error
-			// by the coroner in identifying the
-			// control if they're not wearing a helmet
-			// maybe they're more likely to decide a head injury
-			// was the cause rather than another injury
-			if (!helmet && (g_random() > profile.coronerAccuracy))
-			{
-				// The coroner mis-identifies this control
-				bControl = false;
-			}
-
-			// Equally if they are wearing a helmet 
-			// and the other injuries are a borderline case,
-			// it might sway a coroner to decide the death is a control
-			// rather than a case
-			if (helmet && (g_random() > profile.coronerAccuracy))
-				bControl = true;
-
-			if (bControl)
-			{
-				outputControls.count[helmet]++;
-			}
-			else
-			{
-				outputCases.count[helmet]++;
-			}
+		if (bControl)
+		{
+			outputControls.count[helmet]++;
+		}
+		else
+		{
+			outputCases.count[helmet]++;
 		}
 	}
 }
@@ -384,14 +378,14 @@ public:
 	std::vector<char*> inputStrings;
 };
 
-static void ProcessSettings(const char* rawInputStringConst)
+static void ProcessSettings(const char* rawInputStringConst, InputProfile& profile)
 {
-	InputProfile profile;
 	Zero(&profile, sizeof(profile));
 	
 	SettingsStringsParser parser(rawInputStringConst);
 	parser.GetOption("numberOfCyclists", profile.numberOfCyclists);
 	parser.GetOption("helmetEffectiveness", profile.helmetEffectiveness);
+	parser.GetOption("helmetWearingFraction", profile.helmetWearingFraction);
 	parser.GetOption("probOfCrashing[0]", profile.probOfCrashing[0]);
 	parser.GetOption("probOfCrashing[1]", profile.probOfCrashing[1]);
 	parser.GetOption("probFatalHeadInjury[0]", profile.probFatalHeadInjury[0]);
@@ -431,7 +425,7 @@ static const char* ArgStringComp(const char* arg, const char* str)
 //=======================================
 //
 //=======================================
-void ProcessArgs(int argc, const char* argv[])
+void ProcessArgs(int argc, const char* argv[], InputProfile& profile)
 {
 	FILE* out = stderr;
 	bool bPrintUsage = (argc==1);
@@ -446,14 +440,9 @@ void ProcessArgs(int argc, const char* argv[])
 			break;
 		}
 		
-		if ((argValue = ArgStringComp(argv[i], "-o")))
-		{
-			continue;
-		}
-		
 		if ((argValue = ArgStringComp(argv[i], "--settings")))
 		{
-			ProcessSettings(argValue);
+			ProcessSettings(argValue, profile);
 			continue;
 		}
 	
@@ -470,7 +459,6 @@ void ProcessArgs(int argc, const char* argv[])
 	{
 		fprintf(out, "Usage:\n");
 		fprintf(out, "  -h,  this help msg\n");
-		fprintf(out, "  -o,  -o=file, output the results to a file\n");
 		fprintf(out, "  --settings, --settings=\"comma separated list of settings\"\n");
 
 		fprintf(out, "\nList of Settings:\n");
@@ -497,53 +485,23 @@ void ProcessArgs(int argc, const char* argv[])
 //=======================================
 int main(int argc, const char* argv[])
 {
-	ProcessArgs(argc, argv);
-
-	const char* baseFilename = "output/result";
-	mkdir("output");
-
-	// See initial notes at the top, the approximate odds a cyclist
-	// getting a fatal head injury in a year is around:
-	const double approximateRiskOfFatalHeadInjury = 1.0/0.35e6;
-
-	/////////////////////////////////////
-	// Input profile
-	/////////////////////////////////////
 	InputProfile profile;
-	profile.numberOfCyclists = 4e6;        // around 13.6 million ontarians, ~30% cycle weekly
-	profile.helmetEffectiveness = 0.3;     // pick a random number :-/
-	profile.helmetWearingFraction = 0.36;  // 2009 survey ~ 36% cyclists wearing a helmet
-   	// No idea what the probability of crashing should be so choose something "sensible"
-	// and then scale the risk of a subsequent fatal head injury using the overall approximateRiskOfFatalHeadInjury
-	profile.probOfCrashing[kNoHelmet] = 1.0/100.0;
-	profile.probFatalHeadInjury[kNoHelmet] = approximateRiskOfFatalHeadInjury / profile.probOfCrashing[kNoHelmet];
-	// From persaud it looked for every fatal head injury there were around
-	profile.probFatalOtherInjury[kNoHelmet] = profile.probFatalHeadInjury[kNoHelmet] * 0.7f;
-	// Does helmet wearing population have more chance of crashing
-	// and a higher injury risk?
+	Zero(&profile, sizeof(profile));
+	ProcessArgs(argc, argv, profile);
+	if (profile.numIterations<=0)
+		Bail(stderr, "Nothing to do!");
 
-	profile.probOfCrashing[kHelmet] = profile.probOfCrashing[kNoHelmet];
-	profile.probFatalHeadInjury[kHelmet] = profile.probFatalHeadInjury[kNoHelmet];
-	profile.probFatalOtherInjury[kHelmet] = profile.probFatalOtherInjury[kNoHelmet];
-
-	// Optimisatio so the simulation runs faster	
+	// Optimisation so the simulation runs faster
 	double hack = max(profile.probOfCrashing[kNoHelmet], profile.probOfCrashing[kHelmet]);
+	hack *= 3.0;
 	profile.numberOfCyclists *= hack;
 	profile.probOfCrashing[kHelmet] *= 1.0/hack;
 	profile.probOfCrashing[kNoHelmet] *= 1.0/hack;
 
-	// How accurately does the coroner assess and classigy the controls:
-	profile.coronerAccuracy = 1.0;
-	profile.repeatCount = 5;               // repeat this 5 times, as Persaud et al results were from 2006-2010, spanning 5 years
-	profile.optimisationReserveCount = 500;
-
-	//PrintProfile(stderr, profile);
-	//exit(0);
-
 	///////////////////////////////////////
 	// Run the simulation
 	///////////////////////////////////////
-	const int numIterations = 20000;
+	const int numIterations = profile.numIterations;
 	OddsRatio* results = new OddsRatio[numIterations];
 
 	for (int i=0; i<numIterations; i++)
@@ -561,50 +519,53 @@ int main(int argc, const char* argv[])
 		}
 	}
 
-	///////////////////////////////////////
-	// Analyse the results
-	///////////////////////////////////////
-	
-	// Mean
-	double mean = 0.0;
-	for (int i=0; i<numIterations; i++)
+	if (numIterations>1)
 	{
-		mean += results[i].oddsRatio;
-	}
-	mean /= (double)numIterations;
-	
-	// Variance
-	double variance = 0.0;
-	for (int i=0; i<numIterations; i++)
-	{
-		double x = results[i].oddsRatio;
-		variance += sqr(x - mean);
-	}
-	variance /= (double)(numIterations-1);
+		///////////////////////////////////////
+		// Analyse the results
+		///////////////////////////////////////
 
-	double standardDeviation = sqrt(variance);
-
-	printf("# # # %f, %f, %f\n", mean, variance, standardDeviation, 2.0*standardDeviation);
-
-	// Create a histogram
-	double resolution = max(0.001, min(0.05, standardDeviation/5.0));
-	int numBuckets = (int)((3.0+resolution)/resolution);
-	double* buckets = new double[numBuckets];
-	Zero(buckets, sizeof(double)*numBuckets);
-	
-	for (int i=0; i<numIterations; i++)
-	{
-		int bucket = (int)(((results[i].oddsRatio)/resolution)+0.5f);
-		if (bucket>=0 && bucket<numBuckets)
+		// Mean
+		double mean = 0.0;
+		for (int i=0; i<numIterations; i++)
 		{
-			buckets[bucket] += 1.0;
+			mean += results[i].oddsRatio;
 		}
-	}
+		mean /= (double)numIterations;
 
-	// Output the histogram
-	for (int i=0; i<numBuckets; i++)
-	{
-		printf("%f %f\n", (double)i*resolution, buckets[i]);
+		// Variance
+		double variance = 0.0;
+		for (int i=0; i<numIterations; i++)
+		{
+			double x = results[i].oddsRatio;
+			variance += sqr(x - mean);
+		}
+		variance /= (double)((numIterations-1));
+
+		double standardDeviation = sqrt(variance);
+
+		printf("# # # %f, %f, %f\n", mean, variance, standardDeviation, 2.0*standardDeviation);
+
+		// Create a histogram
+		double resolution = max(0.001, min(0.05, standardDeviation/5.0));
+		int numBuckets = (int)((3.0+resolution)/resolution);
+		double* buckets = new double[numBuckets];
+		Zero(buckets, sizeof(double)*numBuckets);
+
+		for (int i=0; i<numIterations; i++)
+		{
+			int bucket = (int)(((results[i].oddsRatio)/resolution)+0.5f);
+			if (bucket>=0 && bucket<numBuckets)
+			{
+				buckets[bucket] += 1.0;
+			}
+		}
+
+		// Output the histogram
+		for (int i=0; i<numBuckets; i++)
+		{
+			printf("%f %f\n", (double)i*resolution, buckets[i]);
+		}
 	}
 	
 	// Clean up
