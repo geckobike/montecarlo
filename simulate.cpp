@@ -54,6 +54,7 @@ struct InputProfile
 	int numIterations;                  // How many times should the simulation be repeated
 	int seed;                           // [optional] seed for the Mersenne Twister
 
+	int bPrintEachResult;               // debug print each Odds Ratio after each simulation
 	int optimisationReserveCount;       // reserve some memory upfront, as persistent std::vector growth memory allocations are slow
 
 };
@@ -235,6 +236,12 @@ void Simulate(const InputProfile& profile, ReportedGroup& outputCases, ReportedG
 		}
 	}
 
+	//### FIXME
+	//### FIXME
+	//### FIXME This needs to be a loop!
+	//### FIXME
+	//### FIXME
+
 	//===============================================
 	// Coroner analyses the deaths
 	//===============================================
@@ -395,6 +402,7 @@ static void ProcessSettings(const char* rawInputStringConst, InputProfile& profi
 	parser.GetOption("coronerAccuracy", profile.coronerAccuracy);
 	parser.GetOption("numIterations", profile.numIterations);
 	parser.GetOption("seed", profile.seed);
+	parser.GetOption("bPrintEachResult", profile.bPrintEachResult);
 
 	PrintProfile(stderr, profile);
 
@@ -510,7 +518,10 @@ int main(int argc, const char* argv[])
 		ReportedGroup controls;
 		Simulate(profile, cases, controls);
 		results[i].Calculate(cases, controls);
-		//results[i].Print(stderr);
+		if (profile.bPrintEachResult)
+		{
+			results[i].Print(stderr);
+		}
 		//if (i>10) exit(0);
 		if ((i%1000)==0)
 		{
