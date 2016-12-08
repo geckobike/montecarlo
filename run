@@ -1,5 +1,4 @@
 #!/bin/sh
-
 FILEOUT=$1
 EFF=$2
 FRAC=$3
@@ -18,4 +17,3 @@ probFatalOtherInjury[1]=0.0005,\
 coronerAccuracy=$ACC,\
 numIterations=10000,\
 seed=0 > $FILEOUT
-

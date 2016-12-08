@@ -15,11 +15,26 @@
 #include <string.h>
 #include <math.h>
 #include <vector>
+#include <algorithm>
 #include <direct.h>
 
 // Mersenne-Twister, Random Generator taken from http://www.bedaux.net/mtrand/<End
 #include "mtrand.h"
-static MTRand53 g_random;
+static MTRand53 g_random2;
+double g_random()
+{
+	return g_random2();
+	//const int N = 2048;
+	//double r[N];
+	//static int n = N;
+	//if (n>=N)
+	//{
+	//	n=0;
+	//	for (int i=0; i<N; i++)
+	//		r[i] = g_random2();
+	//}
+	//return r[n++];
+}
 
 static void Zero(void* pointer, int size)
 {
@@ -154,13 +169,13 @@ void PrintResults(const InputProfile& profile, const ReportedGroup& cases, const
 	double a = cases.count[kHelmet],   b = controls.count[kHelmet];
 	double c = cases.count[kNoHelmet], d = controls.count[kNoHelmet];
 
-	printf("# =========================================================\n");
-	printf("#  RESULTS: Coroner is %.1f accurate in identifying\n", profile.coronerAccuracy*100.0);
-	printf("#            cases      controls\n");
-	printf("#   helmet     %.1f       %.1f\n", a, b);
-	printf("#   no-helmet  %.1f       %.1f\n", c, d);
-	printf("#   ---------------------------------\n");
-	printf("#   total      %.1f       %.1f\n", a+c, b+d);
+	printf("# # =========================================================\n");
+	printf("# #  RESULTS: Coroner is %.1f accurate in identifying\n", profile.coronerAccuracy*100.0);
+	printf("# #            cases      controls\n");
+	printf("# #   helmet     %.1f       %.1f\n", a, b);
+	printf("# #   no-helmet  %.1f       %.1f\n", c, d);
+	printf("# #   ---------------------------------\n");
+	printf("# #   total      %.1f       %.1f\n", a+c, b+d);
 
 	// Proportion of people wearing helmets in the control group
 	double controlHelmetWearingRate = b / (b+d);
@@ -174,14 +189,14 @@ void PrintResults(const InputProfile& profile, const ReportedGroup& cases, const
 	// Finally the ODDS-RATIO
 	double oddsRatio = casesHelmetWearingOdds / controlHelmetWearingOdds;
 
-	printf("\n#  controlHelmetWearingRate = %.1f %\n\n", controlHelmetWearingRate*100.0);
+	printf("\n# #  controlHelmetWearingRate = %.1f %\n\n", controlHelmetWearingRate*100.0);
 
-	printf("#  ODDS-RATIO = %f\n\n", oddsRatio);
+	printf("# #  ODDS-RATIO = %f\n\n", oddsRatio);
 	
 	double f = controlHelmetWearingRate;
 
 	oddsRatio = (a+b)/(c+d) * (1-f)/f;
-	printf("#  OVERALL ODDS-RATIO = %f\n\n", oddsRatio);
+	printf("# # OVERALL ODDS-RATIO = %f\n\n", oddsRatio);
 
 	fflush(stdout);
 }
@@ -245,43 +260,51 @@ void Simulate(const InputProfile& profile, ReportedGroup& outputCases, ReportedG
 	//===============================================
 	// Coroner analyses the deaths
 	//===============================================
-	for (int i=0; i<(int)deaths.size(); i++)
+	const int numRepeats = 15;
+	for (int repeat=0; repeat<numRepeats; repeat++)
 	{
-		Death& death = deaths[i];
-		int helmet = death.bHelmet ? kHelmet : kNoHelmet;
-
-		// If the death has a fatal non-head injury occurs it
-		// should be classified as a control,
-		// regardless of whether there was as head injury as well
-		bool bControl = death.bFatalNonHeadInjury;
-
-		// However there might be some bias or error
-		// by the coroner in identifying the
-		// control if they're not wearing a helmet
-		// maybe they're more likely to decide a head injury
-		// was the cause rather than another injury
-		if (!helmet && (g_random() > profile.coronerAccuracy))
+		for (int i=0; i<(int)deaths.size(); i++)
 		{
-			// The coroner mis-identifies this control
-			bControl = false;
-		}
+			Death& death = deaths[i];
+			int helmet = death.bHelmet ? kHelmet : kNoHelmet;
 
-		// Equally if they are wearing a helmet 
-		// and the other injuries are a borderline case,
-		// it might sway a coroner to decide the death is a control
-		// rather than a case
-		if (helmet && (g_random() > profile.coronerAccuracy))
-			bControl = true;
+			// If the death has a fatal non-head injury occurs it
+			// should be classified as a control,
+			// regardless of whether there was as head injury as well
+			bool bControl = death.bFatalNonHeadInjury;
 
-		if (bControl)
-		{
-			outputControls.count[helmet]++;
-		}
-		else
-		{
-			outputCases.count[helmet]++;
+			// However there might be some bias or error
+			// by the coroner in identifying the
+			// control if they're not wearing a helmet
+			// maybe they're more likely to decide a head injury
+			// was the cause rather than another injury
+			if (!helmet && (g_random() > profile.coronerAccuracy))
+			{
+				// The coroner mis-identifies this control
+				bControl = false;
+			}
+
+			// Equally if they are wearing a helmet 
+			// and the other injuries are a borderline case,
+			// it might sway a coroner to decide the death is a control
+			// rather than a case
+			if (helmet && (g_random() > profile.coronerAccuracy))
+				bControl = true;
+
+			if (bControl)
+			{
+				outputControls.count[helmet]++;
+			}
+			else
+			{
+				outputCases.count[helmet]++;
+			}
 		}
 	}
+	outputCases.count[0] /= (float)numRepeats;
+	outputCases.count[1] /= (float)numRepeats;
+	outputControls.count[0] /= (float)numRepeats;
+	outputControls.count[1] /= (float)numRepeats;
 }
 
 static void Bail(FILE* file, const char* msg)
@@ -443,7 +466,6 @@ void ProcessArgs(int argc, const char* argv[], InputProfile& profile)
 	{
 		if ((argValue = ArgStringComp(argv[i], "-h")))
 		{
-			printf("argValue = '%s'\n", argValue);
 			bPrintUsage = true;
 			break;
 		}
@@ -511,7 +533,7 @@ int main(int argc, const char* argv[])
 	///////////////////////////////////////
 	const int numIterations = profile.numIterations;
 	OddsRatio* results = new OddsRatio[numIterations];
-
+			
 	for (int i=0; i<numIterations; i++)
 	{
 		ReportedGroup cases;
@@ -525,7 +547,8 @@ int main(int argc, const char* argv[])
 		//if (i>10) exit(0);
 		if ((i%1000)==0)
 		{
-			fprintf(stderr, "%d of %d\n", i, numIterations);
+			results[i].Print(stderr);
+			fprintf(stderr, "%.1f %% completed\n", ((double)(i+100)/(double)numIterations)*100.0);
 			fflush(stderr);
 		}
 	}
@@ -577,6 +600,25 @@ int main(int argc, const char* argv[])
 		{
 			printf("%f %f\n", (double)i*resolution, buckets[i]);
 		}
+
+		// Sort results to create ERF
+		std::vector<float> sortedResults;
+		sortedResults.reserve(numIterations);
+		for (int i=0; i<numIterations; i++)
+		{
+			sortedResults.push_back(results[i].oddsRatio);
+		}
+		std::sort(sortedResults.begin(), sortedResults.end());
+
+		// Careful!
+		float start95 = 0.025 * (float)numIterations;
+		float end95 = (1.0-0.025) * (float)numIterations;
+		
+		if ((int)start95>=0 && (int)end95<(int)sortedResults.size())
+		{
+			printf("# # # 95%% intervals are at %f - %f\n", sortedResults[(int)start95], sortedResults[(int)end95]);
+		}
+		
 	}
 	
 	// Clean up
@@ -585,3 +627,38 @@ int main(int argc, const char* argv[])
 	// End
 	return 0;
 }
+
+#if 0
+int PoissonTest(int argc, const char* argv[])
+{
+	float hist[10] = {0};
+
+	for (int repeat=0; repeat<1000; repeat++)
+	{
+		int bombed[128] = {0};
+		for (int i=0; i<(int)512; i++)
+		{
+			int index = (int)(g_random()*127.9999);
+			bombed[index]++;
+		}
+		for (int i=0; i<128; i++)
+		{
+			if (bombed[i]<10)
+			{
+				hist[bombed[i]] += 1.0;
+			}
+		}
+	}
+
+	for (int i=0; i<10; i++)
+	{
+		hist[i] /= 1000.0;
+		printf("%f %f\n\n", (float)i, hist[i]);
+	}
+
+
+	return 0;
+}
+#endif
+
+
