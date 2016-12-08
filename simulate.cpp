@@ -63,6 +63,11 @@ struct InputProfile
 	double probOfCrashing[2];           // Probability of crashing, for non wearing and helmet wearing cyclist
 	double probFatalHeadInjury[2];      // Probability of this crash becoming a fatal head injury (NB: this is the probability *after crashing*)
 	double probFatalOtherInjury[2];     // Probability of this crash becoming a fatal body injury (after crashing)
+	
+	double probOfDrunk;
+	double probOfDrunkCrash;
+	double probOfDrunkHead;
+	double probOfDrunkBody;
 
 	double coronerAccuracy;             // When deciding whether a death is a "control" or a "case" how accurate is the coroner? 0->1.0, with 1.0 == 100% accurate
 	
@@ -425,6 +430,13 @@ static void ProcessSettings(const char* rawInputStringConst, InputProfile& profi
 	parser.GetOption("coronerAccuracy", profile.coronerAccuracy);
 	parser.GetOption("numIterations", profile.numIterations);
 	parser.GetOption("seed", profile.seed);
+	
+	// - W.I.P.
+	parser.GetOption("probOfDrunk", profile.probOfDrunk);
+	parser.GetOption("probOfDrunkCrash", profile.probOfDrunkCrash);
+	parser.GetOption("probOfDrunkHead", profile.probOfDrunkHead);
+	parser.GetOption("probOfDrunkBody", profile.probOfDrunkBody);
+
 	parser.GetOption("bPrintEachResult", profile.bPrintEachResult);
 
 	PrintProfile(stderr, profile);
@@ -578,8 +590,6 @@ int main(int argc, const char* argv[])
 
 		double standardDeviation = sqrt(variance);
 
-		printf("# # # %f, %f, %f\n", mean, variance, standardDeviation, 2.0*standardDeviation);
-
 		// Create a histogram
 		double resolution = max(0.001, min(0.05, standardDeviation/5.0));
 		int numBuckets = (int)((3.0+resolution)/resolution);
@@ -612,13 +622,15 @@ int main(int argc, const char* argv[])
 
 		// Careful!
 		float start95 = 0.025 * (float)numIterations;
+		float mid = 0.5 * (float)numIterations;
 		float end95 = (1.0-0.025) * (float)numIterations;
 		
 		if ((int)start95>=0 && (int)end95<(int)sortedResults.size())
 		{
 			printf("# # # 95%% intervals are at %f - %f\n", sortedResults[(int)start95], sortedResults[(int)end95]);
+			printf("# # # mid = %f\n", sortedResults[mid]);
 		}
-		
+		printf("# # # mean: %f, var: %f, 2sd: %f\n", mean, variance, standardDeviation, 2.0*standardDeviation);
 	}
 	
 	// Clean up
