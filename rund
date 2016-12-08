@@ -1,0 +1,19 @@
+#!/bin/sh
+
+./simulatedrunk.exe --settings=\
+numberOfCyclists=2e6,\
+helmetEffectiveness=0.0,\
+helmetWearingFraction=0.3,\
+probOfCrashing[0]=0.02,\
+probOfCrashing[1]=0.02,\
+probFatalHeadInjury[0]=0.02,\
+probFatalHeadInjury[1]=0.02,\
+probFatalOtherInjury[0]=0.02,\
+probFatalOtherInjury[1]=0.02,\
+coronerAccuracy=1.0,\
+numIterations=10000,\
+seed=0,\
+probOfDrunk=0.1,\
+probOfDrunkCrash=2,\
+probOfDrunkHead=1,\
+probOfDrunkBody=2
