@@ -1,0 +1,1 @@
+g++ ../mtrand.cpp poisson.cpp -o poisson.exe

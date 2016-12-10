@@ -1,0 +1,4 @@
+./compile
+./poisson.exe > plot.txt
+/c/gnuplot/bin/gnuplot.exe -p plot.gp
+
